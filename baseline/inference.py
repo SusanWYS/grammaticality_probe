@@ -179,16 +179,6 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _save_results(
-    *,
-    out_path: Path,
-    payload: Dict[str, Any],
-    meta: Dict[str, Any],
-) -> None:
-
-    print(f"[surprisal_probe] Saved results to {out_path}")
-
-
 if __name__ == "__main__":
     args = parse_args()
     inference_general(
