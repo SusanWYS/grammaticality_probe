@@ -20,7 +20,7 @@ Defines dataset classes for loading acceptability judgment benchmarks.
 | `RuCoLA` | RuCoLA | Russian | `RussianNLP/ruCoLA` |
 | `JCoLA` | JCoLA | Japanese | `shunk031/JGLUE` |
 | `SLING` | SLING | English | `suchirsalhan/SLING` |
-| `SynthData` | Synthetic | English | [PTB](https://www.kaggle.com/datasets/aliakay8/penn-treebank-dataset) + [Gutenberg](https://huggingface.co/datasets/GenRM/gutenberg-dpo-v0.1-jondurbin) |
+| `SynthData` | Synthetic | English | [PTB](https://catalog.ldc.upenn.edu/LDC99T42) + [Gutenberg](https://huggingface.co/datasets/GenRM/gutenberg-dpo-v0.1-jondurbin) |
 
 **SynthData Perturbations:**
 
@@ -30,4 +30,3 @@ Defines dataset classes for loading acceptability judgment benchmarks.
 | `insertion` | Insert 1-5 random tokens |
 | `local_shuf` | Shuffle a 5-token window |
 | `all` | Apply all perturbation types (1/3 each) |
-

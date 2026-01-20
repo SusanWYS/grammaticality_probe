@@ -37,7 +37,7 @@ ling_comp/
 │   └── helpers.py      # Model configs and layer extraction
 ├── probe/              # Probing classifiers
 │   ├── l2_classifier.py     # L2-regularized logistic regression
-│   ├── l1_classifier.py     # Sparse L1+L2 probing pipeline
+│   ├── l1_classifier.py     # LASSO probing pipeline
 │   ├── surprisal_probe.py   # Surprisal prediction probes
 │   └── helpers.py           # Data formatting and evaluation
 └── results/            # Output directory for inference and probe results
@@ -88,9 +88,9 @@ python -m probe.test_classifier --model olmo2-7B --eval_data BLiMP --train_data 
 python -m ... --add_prob
 ```
 
-### Step 3: Train and Test Sparse Probes
+### Step 3: Train and Test LASSO Probes
 
-Train and evaluate sparse probes with feature selection:
+Train and evaluate LASSO probes with feature selection:
 
 ```bash
 # Train
@@ -146,7 +146,7 @@ python -m ... --incremental
 | [rucola](https://huggingface.co/datasets/RussianNLP/rucola) | Russian | Grammaticality | No |
 | [jcola](https://huggingface.co/datasets/shunk031/JGLUE) | Japanese | Grammaticality | No |
 | [sling](https://huggingface.co/datasets/suchirsalhan/SLING) | Chinese | Grammaticality | Yes |
-| synthetic ([ptb](https://www.kaggle.com/datasets/aliakay8/penn-treebank-dataset), [gutenberg-dpo](https://huggingface.co/datasets/GenRM/gutenberg-dpo-v0.1-jondurbin)) | English | Perturbation-based | Yes |
+| synthetic ([ptb](https://catalog.ldc.upenn.edu/LDC99T42), [gutenberg-dpo](https://huggingface.co/datasets/GenRM/gutenberg-dpo-v0.1-jondurbin)) | English | Perturbation-based | Yes |
 
 ---
 
