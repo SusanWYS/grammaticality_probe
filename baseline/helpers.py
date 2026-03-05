@@ -28,8 +28,8 @@ def _make_run_id(
     Format examples:
       - Default: "-1"
       - Incremental: "-1_incremental"
-      - With perturb "foo": "foo_-1"
-      - With perturb "foo" + incremental: "foo_-1_incremental"
+      - With perturb "local_shuf": "local_shuf_-1"
+      - With perturb "local_shuf" + incremental: "local_shuf_-1_incremental"
     """
     rev_ind = -1
     perturb_prefix = "" if perturb == "all" or perturb == "" else f"{perturb}_"

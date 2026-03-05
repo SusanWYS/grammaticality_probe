@@ -117,7 +117,7 @@ class hfModels:
         Returns:
             hs: (Standard) Tensor [L+1, H] for last token
                 (Incremental) List of Tensors [L+1, H] for each token.
-            norm_prob: (Standard) float sequence-level log-prob
+            norm_prob: (Standard) normalized prefix log-prob
                     (Incremental) List of floats (normalized prefix log-probs).
         """
         inputs = self.tokenizer(text, return_tensors="pt", return_token_type_ids=False)

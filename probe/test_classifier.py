@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import argparse
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -29,68 +29,79 @@ def run_pipeline(
     train_data: Optional[str] = None,
     add_prob: bool = False,
     random: bool = False,
+    eval_datasets: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
-    train_data_name = train_data or eval_data
-    if add_prob:
-        _assert_prob_run_exists("l2", train_data_name, model)
-    example_lookup = _load_example_lookup(eval_data, model)
-    data_cache: DataCache = {}
+    datasets_to_eval = eval_datasets if eval_datasets else [eval_data]
+    all_outputs: Dict[str, Any] = {}
 
-    if target_ratio is None:
-        selections = [
-            _select_best_l2_model(
+    for ds in datasets_to_eval:
+        train_data_name = train_data or ds
+        if add_prob:
+            _assert_prob_run_exists("l2", train_data_name, model)
+        example_lookup = _load_example_lookup(ds, model)
+        data_cache: DataCache = {}
+
+        if target_ratio is None:
+            selections = [
+                _select_best_l2_model(
+                    train_data_name,
+                    model,
+                    start_exp,
+                    end_exp,
+                    add_prob=add_prob,
+                )
+            ]
+            print(f"add_prob is {add_prob}")
+            out_base_dir = _probe_dir("l2", add_prob) / ds / model
+            print(out_base_dir)
+            suffixes = ["l2"]
+        elif random:
+            selections = _load_random_l1_models(
                 train_data_name,
                 model,
+                target_ratio,
                 start_exp,
                 end_exp,
                 add_prob=add_prob,
             )
-        ]
-        print(f"add_prob is {add_prob}")
-        out_base_dir = _probe_dir("l2", add_prob) / eval_data / model
-        print(out_base_dir)
-        suffixes = ["l2"]
-    elif random:
-        selections = _load_random_l1_models(
-            train_data_name,
-            model,
-            target_ratio,
-            start_exp,
-            end_exp,
-            add_prob=add_prob,
-        )
-        out_base_dir = _probe_dir("l1", add_prob, random_select=True) / eval_data / model
-        suffixes = [
-            f"l1_random{sel.get('random_idx')}" if sel.get("random_idx") is not None else "l1_random"
-            for sel in selections
-        ]
-    else:
-        selections = [
-            _load_l1_model(
-                train_data_name, model, target_ratio, start_exp, end_exp, add_prob=add_prob
-            )
-        ]
-        out_base_dir = _probe_dir("l1", add_prob) / eval_data / model
-        suffixes = ["l1"]
+            out_base_dir = _probe_dir("l1", add_prob, random_select=True) / ds / model
+            suffixes = [
+                f"l1_random{sel.get('random_idx')}" if sel.get("random_idx") is not None else "l1_random"
+                for sel in selections
+            ]
+        else:
+            selections = [
+                _load_l1_model(
+                    train_data_name, model, target_ratio, start_exp, end_exp, add_prob=add_prob
+                )
+            ]
+            out_base_dir = _probe_dir("l1", add_prob) / ds / model
+            suffixes = ["l1"]
 
-    outputs: Dict[str, Any] = {}
-    for sel, suffix in zip(selections, suffixes):
-        outputs[suffix] = evaluate_probe_selection(
-            selection=sel,
-            model=model,
-            test=eval_data,
-            start_exp=start_exp,
-            end_exp=end_exp,
-            target_ratio=target_ratio,
-            add_prob=add_prob,
-            suffix=suffix,
-            out_dir=out_base_dir,
-            data_cache=data_cache,
-            example_lookup=example_lookup,
-        )
-    if len(outputs) == 1:
-        return next(iter(outputs.values()))
-    return outputs
+        outputs: Dict[str, Any] = {}
+        for sel, suffix in zip(selections, suffixes):
+            outputs[suffix] = evaluate_probe_selection(
+                selection=sel,
+                model=model,
+                test=ds,
+                start_exp=start_exp,
+                end_exp=end_exp,
+                target_ratio=target_ratio,
+                add_prob=add_prob,
+                suffix=suffix,
+                out_dir=out_base_dir,
+                data_cache=data_cache,
+                example_lookup=example_lookup,
+            )
+
+        if len(datasets_to_eval) == 1:
+            if len(outputs) == 1:
+                return next(iter(outputs.values()))
+            return outputs
+
+        all_outputs[ds] = outputs
+
+    return all_outputs
 
 
 def parse_args() -> argparse.Namespace:
@@ -111,6 +122,13 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Evaluate all random neuron selections saved by l1_classifier",
     )
+    parser.add_argument(
+        "--eval_datasets",
+        type=str,
+        nargs="+",
+        default=None,
+        help="Multiple evaluation datasets. When provided, overrides --eval_data.",
+    )
     return parser.parse_args()
 
 
@@ -125,6 +143,7 @@ def main() -> None:
         train_data=args.train_data,
         add_prob=args.add_prob,
         random=args.random,
+        eval_datasets=args.eval_datasets,
     )
 
 

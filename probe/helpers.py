@@ -16,9 +16,6 @@ from numpy.lib.format import open_memmap
 from sklearn.metrics import roc_auc_score
 from snapml import LogisticRegression
 
-# ---------------------------------------------------------------------------
-# Module Configuration
-# ---------------------------------------------------------------------------
 
 torch.manual_seed(0)
 random.seed(0)
@@ -55,11 +52,6 @@ def _get_gpu_device_ids() -> List[int]:
 GPU_DEVICE_IDS: List[int] = _get_gpu_device_ids()
 
 
-# ---------------------------------------------------------------------------
-# Type Definitions
-# ---------------------------------------------------------------------------
-
-
 class FormatDataResult(TypedDict):
     """Result dictionary from format_data function."""
 
@@ -69,114 +61,13 @@ class FormatDataResult(TypedDict):
     y_test: np.ndarray
     meta_train: Optional[List[Tuple[int, bool]]]
     meta_test: Optional[List[Tuple[int, bool]]]
+    X_dev: Optional[np.ndarray]
+    y_dev: Optional[np.ndarray]
+    meta_dev: Optional[List[Tuple[int, bool]]]
     train_stats: Optional[List[Optional[np.ndarray]]]
     test_stats: Optional[List[Optional[np.ndarray]]]
     dim: int
     split: bool
-
-
-# ---------------------------------------------------------------------------
-# BLiMP Category Mapping
-# ---------------------------------------------------------------------------
-
-blimp_map: Dict[str, List[str]] = {
-    "ANAPHOR AGREEMENT": [
-        "anaphor_gender_agreement",
-        "anaphor_number_agreement",
-    ],
-    "ARGUMENT STRUCTURE": [
-        "animate_subject_passive",
-        "animate_subject_trans",
-        "causative",
-        "drop_argument",
-        "inchoative",
-        "intransitive",
-        "passive_1",
-        "passive_2",
-        "transitive",
-    ],
-    "BINDING": [
-        "principle_A_c_command",
-        "principle_A_case_1",
-        "principle_A_case_2",
-        "principle_A_domain_1",
-        "principle_A_domain_2",
-        "principle_A_domain_3",
-        "principle_A_reconstruction",
-    ],
-    "CONTROL/ RAISING": [
-        "existential_there_object_raising",
-        "existential_there_subject_raising",
-        "expletive_it_object_raising",
-        "tough_vs_raising_1",
-        "tough_vs_raising_2",
-    ],
-    "DETER-MINER-NOUN AGR.": [
-        "determiner_noun_agreement_1",
-        "determiner_noun_agreement_2",
-        "determiner_noun_agreement_irregular_1",
-        "determiner_noun_agreement_irregular_2",
-        "determiner_noun_agreement_1",
-        "determiner_noun_agreement_2",
-        "determiner_noun_agreement_irregular_1",
-        "determiner_noun_agreement_irregular_2",
-    ],
-    "ELLIPSIS": [
-        "ellipsis_n_bar_1",
-        "ellipsis_n_bar_2",
-    ],
-    "FILLER GAP": [
-        "wh_questions_object_gap",
-        "wh_questions_subject_gap",
-        "wh_questions_subject_gap_long_distance",
-        "wh_vs_that_no_gap",
-        "wh_vs_that_no_gap_long_distance",
-        "wh_vs_that_with_gap",
-        "wh_vs_that_with_gap_long_distance",
-    ],
-    "IRREGULAR FORMS": [
-        "irregular_past_participle_adjectives",
-        "irregular_past_participle_verbs",
-    ],
-    "ISLAND EFFECTS": [
-        "adjunct_island",
-        "complex_NP_island",
-        "coordinate_structure_constraint_complex_left_branch",
-        "coordinate_structure_constraint_object_extraction",
-        "left_branch_island_echo_question",
-        "left_branch_island_simple_question",
-        "sentential_subject_island",
-        "wh_island",
-    ],
-    "NPI LICENSING": [
-        "matrix_question_npi_licensor_present",
-        "npi_present_1",
-        "npi_present_2",
-        "only_npi_licensor_present",
-        "only_npi_scope",
-        "sentential_negation_npi_licensor_present",
-        "sentential_negation_npi_scope",
-    ],
-    "QUANTIFIERS": [
-        "existential_there_quantifiers_1",
-        "existential_there_quantifiers_2",
-        "superlative_quantifiers_1",
-        "superlative_quantifiers_2",
-    ],
-    "SUBJECT-VERB AGR.": [
-        "distractor_agreement_relational_noun",
-        "distractor_agreement_relative_clause",
-        "irregular_plural_subject_verb_agreement_1",
-        "irregular_plural_subject_verb_agreement_2",
-        "regular_plural_subject_verb_agreement_1",
-        "regular_plural_subject_verb_agreement_2",
-    ],
-}
-
-
-# ---------------------------------------------------------------------------
-# Path Utilities
-# ---------------------------------------------------------------------------
 
 
 def _make_out_dir(*, data: str, model: str, add_prob: bool) -> Path:
@@ -232,11 +123,6 @@ def _memmap_dir(
     if layer_idx is not None:
         base = base / f"layer{layer_idx}"
     return base
-
-
-# ---------------------------------------------------------------------------
-# Shard Loading Utilities
-# ---------------------------------------------------------------------------
 
 
 def _list_all_shard_pickles(path: Path) -> List[Path]:
@@ -329,11 +215,6 @@ def _count_examples_in_shards(
         del block
         gc.collect()
     return total
-
-
-# ---------------------------------------------------------------------------
-# Feature Extraction
-# ---------------------------------------------------------------------------
 
 
 def _extract_prob(example: Dict[str, Any], is_good: bool) -> Optional[float]:
@@ -534,25 +415,35 @@ def _gather_train_stats(
     return mean_vector, std_vector, safe_std_vector
 
 
-# ---------------------------------------------------------------------------
-# Data Splitting Utilities
-# ---------------------------------------------------------------------------
-
-
 def generate_inds(
     data_len: int,
     seed: int = 0,
     train_ratio: float = 0.8,
+    dev_ratio: Optional[float] = None,
 ) -> Dict[str, np.ndarray]:
-    """Generate train/test split indices.
+    """Generate train/test (or train/dev/test) split indices.
+
+    When *dev_ratio* is set, a three-way split is produced: *train_ratio*
+    of the data goes to ``"train"``, *dev_ratio* to ``"dev"``, and the
+    remainder to ``"test"``.  When ``None`` (default), the original
+    two-way split behaviour is preserved.
     """
     random.seed(seed)
     indices = list(range(data_len))
     random.shuffle(indices)
-    split_point = int(len(indices) * train_ratio)
+    train_end = int(len(indices) * train_ratio)
+
+    if dev_ratio is not None:
+        dev_end = train_end + int(len(indices) * dev_ratio)
+        return {
+            "train": np.array(indices[:train_end]),
+            "dev": np.array(indices[train_end:dev_end]),
+            "test": np.array(indices[dev_end:]),
+        }
+
     return {
-        "train": np.array(indices[:split_point]),
-        "test": np.array(indices[split_point:]),
+        "train": np.array(indices[:train_end]),
+        "test": np.array(indices[train_end:]),
     }
 
 
@@ -603,11 +494,6 @@ def _compute_paired_acc_from_scores(
             correct_pairs += 1
 
     return (correct_pairs / total_pairs) if total_pairs > 0 else float("nan")
-
-
-# ---------------------------------------------------------------------------
-# Classifier Probe Evaluation
-# ---------------------------------------------------------------------------
 
 
 def _evaluate_classifier(
@@ -712,11 +598,6 @@ def evaluate_probe_selection(
     print(f"Saved test results to {out_path}")
 
     return results
-
-
-# ---------------------------------------------------------------------------
-# Regression Probe Training and Evaluation
-# ---------------------------------------------------------------------------
 
 
 def _fit_ridge_regression_snapml(
@@ -1580,11 +1461,6 @@ def determine_num_layers(data_name: str, model_name: str) -> int:
     return int(arr.shape[0])
 
 
-# ---------------------------------------------------------------------------
-# Dataset Formatting (Main Entry Point)
-# ---------------------------------------------------------------------------
-
-
 def format_data(
     data: str,
     neuron_loc: Optional[np.ndarray] = None,
@@ -1595,6 +1471,7 @@ def format_data(
     add_prob: bool = False,
     cat: Optional[str] = None,
     train_ratio: float = 0.8,
+    dev_ratio: Optional[float] = None,
     perturb: str = "",
     layer_idx: Optional[int] = None,
     use_shard_cache: bool = True,
@@ -1647,16 +1524,21 @@ def format_data(
         del first_block
         gc.collect()
 
-    # Generate train/test splits
+    # Generate train/test (or train/dev/test) splits
     total_examples = _count_examples_in_shards(shard_dir, cat, use_cache=use_shard_cache)
-    split_dict = generate_inds(data_len=total_examples, seed=seed, train_ratio=train_ratio)
+    split_dict = generate_inds(
+        data_len=total_examples, seed=seed, train_ratio=train_ratio, dev_ratio=dev_ratio,
+    )
     train_ids = set(map(int, split_dict["train"]))
     test_ids = set(map(int, split_dict["test"]))
+    dev_ids: Optional[set[int]] = (
+        set(map(int, split_dict["dev"])) if "dev" in split_dict else None
+    )
 
     memmap_dir = _memmap_dir(dataset_name, model_name, add_prob=add_prob, layer_idx=layer_idx)
 
     if split:
-        return _format_data_split(
+        return _format_data_impl(
             shard_dir=shard_dir,
             dataset_name=dataset_name,
             neuron_loc=neuron_loc,
@@ -1666,12 +1548,13 @@ def format_data(
             use_shard_cache=use_shard_cache,
             feature_dim=feature_dim,
             rows_per_example=rows_per_example,
+            memmap_dir=memmap_dir,
             train_ids=train_ids,
             test_ids=test_ids,
-            memmap_dir=memmap_dir,
+            dev_ids=dev_ids,
         )
 
-    return _format_data_testonly(
+    return _format_data_impl(
         shard_dir=shard_dir,
         dataset_name=dataset_name,
         neuron_loc=neuron_loc,
@@ -1681,12 +1564,14 @@ def format_data(
         use_shard_cache=use_shard_cache,
         feature_dim=feature_dim,
         rows_per_example=rows_per_example,
-        total_examples=total_examples,
         memmap_dir=memmap_dir,
+        train_ids=None,
+        test_ids=set(range(total_examples)),
+        dev_ids=None,
     )
 
 
-def _format_data_split(
+def _format_data_impl(
     *,
     shard_dir: Path,
     dataset_name: str,
@@ -1697,18 +1582,31 @@ def _format_data_split(
     use_shard_cache: bool,
     feature_dim: int,
     rows_per_example: int,
-    train_ids: set[int],
-    test_ids: set[int],
     memmap_dir: Path,
+    train_ids: Optional[set[int]],
+    test_ids: set[int],
+    dev_ids: Optional[set[int]] = None,
 ) -> FormatDataResult:
-    """Format data with train/test split into memory-mapped arrays.
-    """
-    print(
-        f"[format_data] TRAIN kept: {len(train_ids)}/{len(train_ids)} "
-        f"TEST kept: {len(test_ids)} (100% of TEST)."
-    )
+    """Format data into memory-mapped arrays.
 
-    # Compute normalization statistics from training data
+    When *train_ids* is ``None`` the data is treated as test-only (no split).
+    Otherwise a train/test (and optionally dev) split is produced.
+    """
+    is_split = train_ids is not None
+
+    if is_split:
+        dev_msg = f" DEV kept: {len(dev_ids)}" if dev_ids else ""
+        print(
+            f"[format_data] TRAIN kept: {len(train_ids)}/{len(train_ids)} "
+            f"TEST kept: {len(test_ids)} (100% of TEST).{dev_msg}"
+        )
+    else:
+        print(
+            f"[format_data:testonly] Using {len(test_ids)} / {len(test_ids)} "
+            "examples as TESTONLY."
+        )
+
+    # Compute normalization statistics
     mean_vec, std_vec, safe_std_vec = _gather_train_stats(
         shard_dir=shard_dir,
         train_example_ids=train_ids,
@@ -1730,156 +1628,68 @@ def _format_data_split(
         )
 
     # Create memory-mapped arrays
-    num_train_rows = len(train_ids) * rows_per_example
-    num_test_rows = len(test_ids) * rows_per_example
     memmap_dir.mkdir(parents=True, exist_ok=True)
 
-    X_train = open_memmap(
-        str(memmap_dir / f"X_train_{LAST_TOK_HS}_{feature_dim}x{num_train_rows}.npy"),
-        mode="w+", dtype="float32", shape=(num_train_rows, feature_dim)
-    )
-    y_train = open_memmap(
-        str(memmap_dir / f"y_train_{LAST_TOK_HS}_{num_train_rows}.npy"),
-        mode="w+", dtype="float32", shape=(num_train_rows,)
-    )
+    # -- buffers dict: maps split name -> [X, y, meta, row_idx] --
+    buffers: Dict[str, list] = {}
+
+    num_test_rows = len(test_ids) * rows_per_example
     X_test = open_memmap(
-        str(memmap_dir / f"X_test_{LAST_TOK_HS}_{feature_dim}x{num_test_rows}.npy"),
+        str(memmap_dir / f"X_{'testonly' if not is_split else 'test'}_{LAST_TOK_HS}_{feature_dim}x{num_test_rows}.npy"),
         mode="w+", dtype="float32", shape=(num_test_rows, feature_dim)
     )
     y_test = open_memmap(
-        str(memmap_dir / f"y_test_{LAST_TOK_HS}_{num_test_rows}.npy"),
+        str(memmap_dir / f"y_{'testonly' if not is_split else 'test'}_{LAST_TOK_HS}_{num_test_rows}.npy"),
         mode="w+", dtype="float32", shape=(num_test_rows,)
     )
+    buffers["test"] = [X_test, y_test, [], 0]
 
-    meta_train: List[Tuple[int, bool]] = []
-    meta_test: List[Tuple[int, bool]] = []
-    train_row_idx = 0
-    test_row_idx = 0
+    if is_split:
+        num_train_rows = len(train_ids) * rows_per_example
+        X_train_arr = open_memmap(
+            str(memmap_dir / f"X_train_{LAST_TOK_HS}_{feature_dim}x{num_train_rows}.npy"),
+            mode="w+", dtype="float32", shape=(num_train_rows, feature_dim)
+        )
+        y_train_arr = open_memmap(
+            str(memmap_dir / f"y_train_{LAST_TOK_HS}_{num_train_rows}.npy"),
+            mode="w+", dtype="float32", shape=(num_train_rows,)
+        )
+        buffers["train"] = [X_train_arr, y_train_arr, [], 0]
+
+    if dev_ids:
+        num_dev_rows = len(dev_ids) * rows_per_example
+        X_dev_arr = open_memmap(
+            str(memmap_dir / f"X_dev_{LAST_TOK_HS}_{feature_dim}x{num_dev_rows}.npy"),
+            mode="w+", dtype="float32", shape=(num_dev_rows, feature_dim)
+        )
+        y_dev_arr = open_memmap(
+            str(memmap_dir / f"y_dev_{LAST_TOK_HS}_{num_dev_rows}.npy"),
+            mode="w+", dtype="float32", shape=(num_dev_rows,)
+        )
+        buffers["dev"] = [X_dev_arr, y_dev_arr, [], 0]
 
     # Populate arrays
     for example_idx, example in _stream_all_examples(shard_dir, cat, use_cache=use_shard_cache):
-        dest, _ = _route_destination(
-            example_idx, split=True, kept_train_ids=train_ids,
-            final_test_ids=test_ids, wanted=None
-        )
-        if dest == "skip":
+        # Determine destination
+        if is_split:
+            if dev_ids and example_idx in dev_ids:
+                dest = "dev"
+            elif example_idx in train_ids:
+                dest = "train"
+            elif example_idx in test_ids:
+                dest = "test"
+            else:
+                continue
+        else:
+            if example_idx in test_ids:
+                dest = "test"
+            else:
+                continue
+
+        buf = buffers.get(dest)
+        if buf is None:
             continue
-
-        bad_vec = _to_vec(
-            example, dataset_name, neuron_loc,
-            which="bad", add_prob=add_prob, layer_idx=layer_idx
-        )
-        good_vec = _to_vec(
-            example, dataset_name, neuron_loc,
-            which="good", add_prob=add_prob, layer_idx=layer_idx
-        )
-
-        if dest == "train":
-            if bad_vec is not None:
-                _copy_or_normalize_row(X_train[train_row_idx], bad_vec, mean_vec, safe_std_vec)
-                y_train[train_row_idx] = 0
-                meta_train.append((example_idx, False))
-                train_row_idx += 1
-            if good_vec is not None:
-                _copy_or_normalize_row(X_train[train_row_idx], good_vec, mean_vec, safe_std_vec)
-                y_train[train_row_idx] = 1
-                meta_train.append((example_idx, True))
-                train_row_idx += 1
-        else:  # test
-            if bad_vec is not None:
-                _copy_or_normalize_row(X_test[test_row_idx], bad_vec, mean_vec, safe_std_vec)
-                y_test[test_row_idx] = 0
-                meta_test.append((example_idx, False))
-                test_row_idx += 1
-            if good_vec is not None:
-                _copy_or_normalize_row(X_test[test_row_idx], good_vec, mean_vec, safe_std_vec)
-                y_test[test_row_idx] = 1
-                meta_test.append((example_idx, True))
-                test_row_idx += 1
-
-    norm_stats = [mean_vec, std_vec]
-    return {
-        "X_train": X_train,
-        "X_test": X_test,
-        "y_train": y_train,
-        "y_test": y_test,
-        "meta_train": meta_train,
-        "meta_test": meta_test,
-        "train_stats": norm_stats,
-        "test_stats": norm_stats,
-        "dim": int(feature_dim),
-        "split": True,
-    }
-
-
-def _format_data_testonly(
-    *,
-    shard_dir: Path,
-    dataset_name: str,
-    neuron_loc: Optional[np.ndarray],
-    add_prob: bool,
-    cat: Optional[str],
-    layer_idx: Optional[int],
-    use_shard_cache: bool,
-    feature_dim: int,
-    rows_per_example: int,
-    total_examples: int,
-    memmap_dir: Path,
-) -> FormatDataResult:
-    """Format data as test-only into memory-mapped arrays.
-    """
-    print(
-        f"[format_data:testonly] Using {total_examples} / {total_examples} "
-        "examples as TESTONLY."
-    )
-
-    # Compute normalization statistics from all data
-    mean_vec, std_vec, safe_std_vec = _gather_train_stats(
-        shard_dir=shard_dir,
-        train_example_ids=None,
-        dataset_name=dataset_name,
-        neuron_indices=neuron_loc,
-        add_prob_features=False,
-        category_name=cat,
-        layer_idx=layer_idx,
-        use_cache=use_shard_cache,
-    )
-
-    # Extend stats for probability feature if needed
-    if add_prob and mean_vec is not None:
-        mean_vec = np.concatenate([mean_vec, np.zeros(1, dtype=mean_vec.dtype)], axis=0)
-        if std_vec is not None:
-            std_vec = np.concatenate([std_vec, np.ones(1, dtype=std_vec.dtype)], axis=0)
-        safe_std_vec = np.concatenate(
-            [safe_std_vec, np.ones(1, dtype=safe_std_vec.dtype)], axis=0
-        )
-
-    # Create memory-mapped arrays
-    num_rows = total_examples * rows_per_example
-    memmap_dir.mkdir(parents=True, exist_ok=True)
-
-    X_out = open_memmap(
-        str(memmap_dir / f"X_testonly_{LAST_TOK_HS}_{feature_dim}x{num_rows}.npy"),
-        mode="w+", dtype="float32", shape=(num_rows, feature_dim)
-    )
-    y_out = open_memmap(
-        str(memmap_dir / f"y_testonly_{LAST_TOK_HS}_{num_rows}.npy"),
-        mode="w+", dtype="float32", shape=(num_rows,)
-    )
-
-    meta_out: List[Tuple[int, bool]] = []
-    row_idx = 0
-
-    all_ids: set[int] = set(range(total_examples))
-
-    # Populate arrays
-    for example_idx, example in _stream_all_examples(shard_dir, cat, use_cache=use_shard_cache):
-        dest, _ = _route_destination(
-            example_idx, split=False, kept_train_ids=set(),
-            final_test_ids=all_ids, wanted=None
-        )
-        if dest == "skip":
-            continue
+        X_buf, y_buf, meta_buf, row_idx = buf
 
         bad_vec = _to_vec(
             example, dataset_name, neuron_loc,
@@ -1891,26 +1701,36 @@ def _format_data_testonly(
         )
 
         if bad_vec is not None:
-            _copy_or_normalize_row(X_out[row_idx], bad_vec, mean_vec, safe_std_vec)
-            y_out[row_idx] = 0
-            meta_out.append((example_idx, False))
+            _copy_or_normalize_row(X_buf[row_idx], bad_vec, mean_vec, safe_std_vec)
+            y_buf[row_idx] = 0
+            meta_buf.append((example_idx, False))
             row_idx += 1
         if good_vec is not None:
-            _copy_or_normalize_row(X_out[row_idx], good_vec, mean_vec, safe_std_vec)
-            y_out[row_idx] = 1
-            meta_out.append((example_idx, True))
+            _copy_or_normalize_row(X_buf[row_idx], good_vec, mean_vec, safe_std_vec)
+            y_buf[row_idx] = 1
+            meta_buf.append((example_idx, True))
             row_idx += 1
 
+        buf[3] = row_idx
+
     norm_stats = [mean_vec, std_vec]
+
+    test_buf = buffers["test"]
+    train_buf = buffers.get("train")
+    dev_buf = buffers.get("dev")
+
     return {
-        "X_train": None,
-        "X_test": X_out,
-        "y_train": None,
-        "y_test": y_out,
-        "meta_train": None,
-        "meta_test": meta_out,
+        "X_train": train_buf[0] if train_buf else None,
+        "X_test": test_buf[0],
+        "y_train": train_buf[1] if train_buf else None,
+        "y_test": test_buf[1],
+        "meta_train": train_buf[2] if train_buf else None,
+        "meta_test": test_buf[2],
+        "X_dev": dev_buf[0] if dev_buf else None,
+        "y_dev": dev_buf[1] if dev_buf else None,
+        "meta_dev": dev_buf[2] if dev_buf else None,
         "train_stats": norm_stats,
         "test_stats": norm_stats,
         "dim": int(feature_dim),
-        "split": False,
+        "split": is_split,
     }

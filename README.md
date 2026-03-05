@@ -29,17 +29,18 @@ ling_comp/
 │   ├── inference.py    # Extract hidden states and log-probs
 │   ├── fewshot.py      # Few-shot prompting evaluation
 │   └── helpers.py      # Sharding utilities
-├── data/               # Dataset loading and preprocessing
+├── data/               # Dataset loading and processing
 │   ├── format_data.py  # Dataset class definitions
 │   └── helpers.py      # Tokenization and perturbation functions
 ├── models/             # Model wrappers
 │   ├── all_models.py   # HuggingFace model interface
 │   └── helpers.py      # Model configs and layer extraction
 ├── probe/              # Probing classifiers
-│   ├── l2_classifier.py     # L2-regularized logistic regression
-│   ├── l1_classifier.py     # LASSO probing pipeline
-│   ├── surprisal_probe.py   # Surprisal prediction probes
-│   └── helpers.py           # Data formatting and evaluation
+│   ├── l2_classifier.py     # L2 probe training
+│   ├── l1_classifier.py     # LASSO probe training
+│   ├── surprisal_probe.py   # Surprisal probe training + testing
+│   ├── test_classifier.py   # Test L2/LASSO probes
+│   └── helpers.py           # Helper functions
 └── results/            # Output directory for inference and probe results
 ```
 
